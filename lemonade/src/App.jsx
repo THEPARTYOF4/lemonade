@@ -34,6 +34,7 @@ const PITCH_SECTIONS=[
   {key:"tell",   label:"Tell",   icon:"T",desc:"How it works — the mechanics.",        color:T.grove,soft:T.groveSoft},
   {key:"clarify",label:"Clarify",icon:"C",desc:"Key benefits — quantified value.",     color:T.purple,soft:T.purpleSoft},
   {key:"help",   label:"Help",   icon:"H",desc:"Future outlook — ask & vision.",       color:T.blue,soft:T.blueSoft},
+  {key:"heart",  label:"Heart",  icon:"♥",desc:"The emotional core — why this matters.",color:"#E8345A",soft:"#FDEDF1"},
 ];
  
 // LS helpers
@@ -61,6 +62,7 @@ const GS=()=>(
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
     @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
     @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes modalPop{from{opacity:0;transform:translateY(24px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
     .fu{animation:fadeUp .4s cubic-bezier(.22,1,.36,1) both}
     .fi{animation:fadeIn .25s ease both}
     .fl{animation:float 3.5s ease-in-out infinite}
@@ -451,7 +453,6 @@ function CreatorStudio({profile,sessionId,initData,onBack,onSave}){
       role: m.role === "ai" ? "model" : "user",
       parts: [{ text: m.text }],
     }));
-  console.log("AI got: ", t);
   setInput("");
   addMsg({ role: "user", type: "msg", text: t });
   setAiLoading(true);
@@ -469,15 +470,29 @@ function CreatorStudio({profile,sessionId,initData,onBack,onSave}){
   }
 };
   
-  const runAnalysis=async(fromChat=false)=>{
-    if(!fromChat)addMsg({role:"user",type:"msg",text:"Analyze my full pitch."});
-    setAiLoading(true);
-    try{
-      const r=await ai_fullAnalysis(sections,profile);
-      setAnalysis(r); setPanel("analysis");
-      addMsg({role:"ai",type:"analysis",analysis:r});
-    }finally{setAiLoading(false);}
-  };
+const runAnalysis = async (fromChat = false) => {
+  setAiLoading(true);
+  try {
+    // Format the history just like you did in the 'send' function
+    const historyForAI = msgs
+      .filter(m => m.id !== "w0" && m.type === "msg")
+      .map(m => ({
+        role: m.role === "ai" ? "model" : "user",
+        parts: [{ text: m.text }],
+      }));
+
+    // Pass the 3rd argument!
+    const r = await ai_fullAnalysis(sections, profile, historyForAI);
+    
+    setAnalysis(r);
+    setPanel("analysis");
+    addMsg({ role: "ai", type: "analysis", analysis: r });
+  } catch (err) {
+    console.error("Analysis Error:", err);
+  } finally {
+    setAiLoading(false);
+  }
+};
  
   const acceptDraft=(key,draft)=>{
     setSections(s=>({...s,[key]:draft}));
@@ -510,7 +525,7 @@ function CreatorStudio({profile,sessionId,initData,onBack,onSave}){
   ];
  
   return(
-    <div style={{height:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
+    <div style={{height:"100vh",background:T.bg,display:"flex",flexDirection:"column",position:"relative"}}>
       <div style={{background:T.surface,borderBottom:`1.5px solid ${T.border}`,padding:"8px 16px",display:"flex",alignItems:"center",gap:"11px",flexShrink:0,flexWrap:"wrap"}}>
         <span style={{fontSize:"16px"}}>🍋</span>
         <span style={{fontFamily:SERIF,fontWeight:700,fontSize:"14px"}}>lemonade</span>
@@ -599,23 +614,38 @@ function CreatorStudio({profile,sessionId,initData,onBack,onSave}){
               </div>
               {analysis?(
                 <div className="fu">
+                  {/* Grade + Score card */}
                   <Card style={{textAlign:"center",marginBottom:"11px",background:T.lemonSoft,border:`1.5px solid ${T.lemon}88`}}>
                     <div style={{fontSize:"10px",color:T.lemonDark,fontFamily:MONO,textTransform:"uppercase",letterSpacing:".1em",marginBottom:"4px"}}>Overall Score</div>
-                    <div style={{fontFamily:SERIF,fontSize:"54px",fontWeight:800,color:GCOL(analysis.score),lineHeight:1}}>{analysis.score}</div>
-                    <div style={{fontSize:"12px",color:T.muted}}>/100</div>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"14px",marginBottom:"6px"}}>
+                      <div style={{fontFamily:SERIF,fontSize:"54px",fontWeight:800,color:GCOL(analysis.score),lineHeight:1}}>{analysis.score}</div>
+                      {analysis.grade&&(
+                        <div style={{padding:"5px 13px",background:GCOL(analysis.score)+"22",border:`1.5px solid ${GCOL(analysis.score)}44`,borderRadius:"8px",fontFamily:SERIF,fontSize:"28px",fontWeight:800,color:GCOL(analysis.score)}}>
+                          {analysis.grade}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{fontSize:"12px",color:T.muted,marginBottom:analysis.verdict?"8px":0}}>/100</div>
+                    {analysis.verdict&&(
+                      <div style={{fontSize:"12px",color:T.text,lineHeight:1.5,padding:"8px 10px",background:T.card,borderRadius:"7px",textAlign:"left"}}>
+                        {analysis.verdict}
+                      </div>
+                    )}
                   </Card>
+                  {/* Per-section breakdown */}
                   <Card style={{marginBottom:"11px"}}>
                     <div style={{fontSize:"12px",fontWeight:600,marginBottom:"10px"}}>PITCH Breakdown</div>
                     {PITCH_SECTIONS.map(sec=>{
-                      const item=analysis.breakdown?.[sec.key];if(!item)return null;
+                      const item=analysis.breakdown?.[sec.key]; if(!item)return null;
                       return(
-                        <div key={sec.key} style={{marginBottom:"11px"}}>
-                          <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"2px"}}>
-                            <PB sec={sec} size={19}/><span style={{fontSize:"12px",fontWeight:600,flex:1}}>{sec.label}</span>
-                            <span style={{fontSize:"11px",color:T.muted}}>{item.score}/100</span>
+                        <div key={sec.key} style={{marginBottom:"12px"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"3px"}}>
+                            <PB sec={sec} size={19}/>
+                            <span style={{fontSize:"12px",fontWeight:600,flex:1}}>{sec.label}</span>
+                            <span style={{fontSize:"11px",color:T.muted,fontFamily:MONO}}>{item.score}/100</span>
                           </div>
                           <Bar v={item.score}/>
-                          <div style={{fontSize:"11px",color:T.muted,marginTop:"2px",lineHeight:1.4}}>{item.comment}</div>
+                          {item.comment&&<div style={{fontSize:"11px",color:T.muted,marginTop:"3px",lineHeight:1.4}}>{item.comment}</div>}
                         </div>
                       );
                     })}
@@ -634,7 +664,8 @@ function CreatorStudio({profile,sessionId,initData,onBack,onSave}){
               ):(
                 <div style={{textAlign:"center",padding:"44px 0",color:T.muted}}>
                   <div style={{fontSize:"32px",marginBottom:"9px"}}>📊</div>
-                  <p style={{fontSize:"13px",marginBottom:"14px"}}>Build your pitch first, then analyze it</p>
+                  <p style={{fontSize:"13px",marginBottom:"6px"}}>No analysis yet</p>
+                  <p style={{fontSize:"12px",color:T.mutedLight,marginBottom:"16px"}}>Complete the discovery flow to get a scored, graded breakdown.</p>
                   <Btn v="grove" onClick={()=>runAnalysis()}>Analyze now</Btn>
                 </div>
               )}
@@ -748,12 +779,18 @@ function MsgBubble({msg,onAccept,profile,GCOL,onSectionEdit}){
  
   if(msg.type==="analysis"){
     const a=msg.analysis;
+    const GC={"A+":T.success,"A":T.success,"A-":T.success,"B+":T.blue,"B":T.blue,"B-":T.blue,"C+":T.warn,"C":T.warn,"C-":T.warn,"D":T.danger,"F":T.danger};
     return(
       <div className="fu" style={{padding:"13px 15px",background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:"12px"}}>
-        <div style={{display:"flex",alignItems:"baseline",gap:"10px",marginBottom:"9px"}}>
-          <span style={{fontFamily:SERIF,fontSize:"34px",fontWeight:800,color:GCOL(a.score),lineHeight:1}}>{a.score}</span>
-          <div><div style={{fontSize:"11px",color:T.muted,fontFamily:MONO}}>PITCH SCORE</div><div style={{fontSize:"12px",color:T.text}}>out of 100</div></div>
+        <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"10px"}}>
+          <span style={{fontFamily:SERIF,fontSize:"38px",fontWeight:800,color:GCOL(a.score),lineHeight:1}}>{a.score}</span>
+          {a.grade&&<span style={{fontFamily:SERIF,fontSize:"22px",fontWeight:800,color:GC[a.grade]||T.text,padding:"3px 10px",background:(GC[a.grade]||T.text)+"18",borderRadius:"6px"}}>{a.grade}</span>}
+          <div>
+            <div style={{fontSize:"11px",color:T.muted,fontFamily:MONO}}>PITCH SCORE</div>
+            <div style={{fontSize:"12px",color:T.text}}>out of 100</div>
+          </div>
         </div>
+        {a.verdict&&<div style={{fontSize:"12px",color:T.text,lineHeight:1.5,marginBottom:"9px",padding:"8px 10px",background:T.card,borderRadius:"7px",border:`1px solid ${T.border}`}}>{a.verdict}</div>}
         {PITCH_SECTIONS.map(sec=>{
           const item=a.breakdown?.[sec.key];if(!item)return null;
           return(
@@ -765,6 +802,9 @@ function MsgBubble({msg,onAccept,profile,GCOL,onSectionEdit}){
         })}
         <div style={{marginTop:"9px",fontSize:"12px",color:T.muted,lineHeight:1.4,borderTop:`1px solid ${T.border}`,paddingTop:"8px"}}>
           💡 {a.improvements?.[0]}
+        </div>
+        <div style={{marginTop:"7px",fontSize:"12px",color:T.muted}}>
+          Check the **Analysis** panel on the right for the full breakdown →
         </div>
       </div>
     );
@@ -875,7 +915,9 @@ function ReviewerStudio({profile,sessionId,initData,onBack,onSave}){
   const[compPitches,setCompPitches]=useState(initData?.compPitches||[]);
   const[weights,setWeights]=useState(Object.fromEntries(PITCH_SECTIONS.map(s=>[s.key,20])));
   const[exporting,setExporting]=useState(null);
- 
+  const[shareOpen,setShareOpen]=useState(false);
+  const[shareCopied,setShareCopied]=useState(false);
+
   // Chat state — welcome msg + combined review+discuss in one thread
   const[msgs,setMsgs]=useState(initData?.msgs||[{
     id:"rw0",role:"ai",type:"welcome",
@@ -885,7 +927,8 @@ function ReviewerStudio({profile,sessionId,initData,onBack,onSave}){
   const[chatLoading,setChatLoading]=useState(false);
   const chatRef=useRef(null);
   const inputRef=useRef(null);
- 
+  const shareLink=`https://lemonade.review/session/${sessionId||"demo"}`;
+
   useEffect(()=>{onSave({pitch,evaluation,comments,msgs,compPitches})},[pitch,evaluation,comments,msgs,compPitches]);
   useEffect(()=>{if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},[msgs,chatLoading]);
  
@@ -958,9 +1001,33 @@ function ReviewerStudio({profile,sessionId,initData,onBack,onSave}){
           {PANELS.map(([id,lbl])=>(
             <Btn key={id} sm v={panel===id?"lemon":"ghost"} onClick={()=>setPanel(id)}>{lbl}</Btn>
           ))}
+          <Btn sm v={shareOpen?"outline":"ghost"} onClick={()=>setShareOpen(true)}>
+            🔗 Share Session
+          </Btn>
         </div>
       </div>
- 
+
+      {shareOpen&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(26,21,0,0.32)",backdropFilter:"blur(2.3px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:20,padding:"18px"}}>
+          <div style={{background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:"16px",padding:"26px",maxWidth:"540px",width:"100%",minHeight:"240px",boxShadow:"0 24px 60px rgba(0,0,0,0.22)",display:"flex",flexDirection:"column",gap:"14px",animation:"modalPop .32s cubic-bezier(.22,1,.36,1)",transformOrigin:"center"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{fontSize:"14px",fontWeight:700}}>Share Reviewer Session</div>
+              <button onClick={()=>setShareOpen(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"16px",color:T.muted}}>✕</button>
+            </div>
+            <div style={{fontSize:"12px",color:T.muted,lineHeight:1.55}}>
+              Concept preview: send this link to invite reviewers into the same chat, annotations, and pitch canvas. Once real-time sync ships, everyone inside will see the identical timeline in lockstep.
+            </div>
+            <div style={{display:"flex",gap:"8px",alignItems:"center",flexWrap:"wrap"}}>
+              <code style={{background:T.card,border:`1.5px solid ${T.border}`,borderRadius:"8px",padding:"8px 10px",fontFamily:MONO,fontSize:"12px",color:T.text,flex:"1 1 220px"}}>{shareLink}</code>
+              <Btn sm v="secondary" onClick={()=>{navigator.clipboard?.writeText(shareLink);setShareCopied(true);setTimeout(()=>setShareCopied(false),1800);}}>
+                {shareCopied?"Copied":"Copy"}
+              </Btn>
+            </div>
+            <div style={{fontSize:"11px",color:T.mutedLight,fontStyle:"italic"}}>Prototype only — link is illustrative until workspace sharing is live.</div>
+          </div>
+        </div>
+      )}
+
       {/* ── Body: chat left | panels right ── */}
       <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 370px",overflow:"hidden"}}>
  
