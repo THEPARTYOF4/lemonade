@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { 
   ai_chat, 
-  ai_draftSection, 
   ai_fullAnalysis, 
   ai_refine, 
   ai_deliveryAnalysis, 
