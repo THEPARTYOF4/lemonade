@@ -1,105 +1,13 @@
 import { useState, useRef, useEffect } from "react";
- 
-// ══════════════════════════════════════════════════════════════════════════════
-//  SIMULATED AI FUNCTIONS — swap these for real API calls when ready
-// ══════════════════════════════════════════════════════════════════════════════
-const _sleep = (ms) => new Promise(r => setTimeout(r, ms));
- 
-async function ai_chat(userText, profile, sections) {
-  await _sleep(700 + Math.random() * 600);
-  const t = userText.toLowerCase();
-  const co = profile?.company || "your company";
-  const ind = profile?.industry || "your industry";
- 
-  // Detect generate/draft intent
-  const secMatch = PITCH_SECTIONS.find(s =>
-    t.includes(s.label.toLowerCase()) || t.includes(s.key)
-  );
-  if ((t.includes("generate") || t.includes("write") || t.includes("draft") || t.includes("create")) && secMatch) {
-    const draft = await ai_draftSection(secMatch.key, profile, sections[secMatch.key]);
-    return { type: "section_draft", sectionKey: secMatch.key, intro: `Here's a draft for your **${secMatch.label}** section:`, draft };
-  }
-  if (t.includes("all sections") || t.includes("full pitch") || t.includes("everything")) {
-    return { type: "generate_all", text: "Let me draft all five PITCH sections for you. Give me a moment…" };
-  }
-  if (t.includes("analyz") || t.includes("score") || t.includes("review my pitch") || t.includes("evaluate") || t.includes("feedback on my pitch")) {
-    return { type: "analysis_trigger", text: "Analyzing your full PITCH now…" };
-  }
-  if (t.includes("upload") || t.includes("import") || t.includes("existing")) {
-    return { type: "upload_trigger", text: "Sure! Use the upload zone in the Sections panel to drop in your existing deck or document — I'll parse it into the PITCH framework automatically." };
-  }
-  if (t.includes("export") || t.includes("download") || t.includes("pptx") || t.includes("pdf")) {
-    return { type: "export_trigger", text: "Head to the **Export** panel (top right) to download your pitch as a PowerPoint, PDF, Markdown, or plain text file." };
-  }
- 
-  const replies = [
-    `Great question. For ${co} in ${ind}, I'd start the **Premise** with a single sharp stat — something that makes an investor feel the urgency before you say a word about your solution.`,
-    `Your **Idea** section is the most critical 15 seconds. Lead with the one-liner: *"${co} is the [category] that [does X] for [audience] without [pain]."* Make it memorable.`,
-    `The secret to a great **Tell** section: don't describe features — walk through a user's day *before* your product, then *after*. Contrast does the selling.`,
-    `For **Clarify**, investors want numbers, not adjectives. Replace "much faster" with "10× faster" and "cheaper" with "40% cost reduction." Specificity builds credibility.`,
-    `The **Help** section often undersells. Don't just state the ask — paint the 18-month picture. Tell them what this round funds, what milestone it unlocks, and why *now* is the right time.`,
-    `PITCH framework tip: think of it as a story. Premise sets the stage, Idea is the hero, Tell is the proof, Clarify is the payoff, Help is the invitation to join the journey.`,
-    `For ${ind} at the ${profile?.stage || "early"} stage, investors are betting on the team as much as the idea. Make sure your founder story comes through clearly in the Premise.`,
-  ];
-  return { type: "message", text: replies[Math.floor(Math.random() * replies.length)] };
-}
- 
-async function ai_draftSection(key, profile, existing) {
-  await _sleep(500 + Math.random() * 400);
-  const co = profile?.company || "Our company";
-  const ind = profile?.industry || "this space";
-  const stage = profile?.stage || "early-stage";
-  const drafts = {
-    premise: `${co} exists because ${ind} is fundamentally broken. ${profile?.problem || "The core problem"} affects ${profile?.audience || "millions of people"} every day — costing time, money, and missed opportunity. Today's solutions are too slow, too expensive, and too disconnected to solve it at scale.`,
-    idea:    `${co} is a ${stage} company building ${profile?.solution || "an AI-powered platform"} that eliminates this friction entirely. We're not iterating on legacy tools — we're replacing the old approach with something fundamentally better and faster.`,
-    tell:    `Here's how it works: ${profile?.audience || "Users"} connect their existing workflow in under 5 minutes — no migration required. Our system automatically handles the hardest parts. ${profile?.traction ? `We've already proven this: ${profile.traction}.` : "Beta customers report measurable results within 30 days."}`,
-    clarify: `Three things make ${co} different: (1) Speed — 10× faster than the status quo. (2) Cost — ~40% reduction in operational overhead. (3) Network effect — the platform compounds in value with every new customer. ${profile?.traction ? `Traction: ${profile.traction}.` : "Early adopters see ROI within the first month."}`,
-    help:    `We're raising ${profile?.ask || "$500K"} to accelerate go-to-market, expand the team, and lock in 5 enterprise anchors. This round takes us to $1M ARR within 18 months and sets up a clean Series A. We're looking for investors who move fast and open doors in ${ind}.`,
-  };
-  return drafts[key] || `[AI draft for ${key} — tailored content for ${co} would appear here.]`;
-}
- 
-async function ai_fullAnalysis(sections, profile) {
-  await _sleep(1400 + Math.random() * 600);
-  const filled = PITCH_SECTIONS.filter(s => (sections[s.key] || "").trim().length > 30).length;
-  const base = Math.min(94, 40 + filled * 10 + Math.floor(Math.random() * 8));
-  return {
-    score: base,
-    breakdown: Object.fromEntries(PITCH_SECTIONS.map(s => [s.key, {
-      score: Math.min(98, Math.max(32, base + Math.floor(Math.random() * 18) - 7)),
-      comment: { premise: "Strong setup — add one hard data point for urgency.", idea: "Clear concept. Tighten the differentiation statement.", tell: "Logical flow. Add a concrete before/after user story.", clarify: "Benefits land well — quantify each one with numbers.", help: "Ask is solid. Add use-of-funds and 12-month milestones." }[s.key] || "",
-    }])),
-    strengths: [`${profile?.company}'s problem framing is crisp and investor-ready.`, `The ${profile?.industry} market timing narrative is well-positioned.`],
-    improvements: ["Open with a one-sentence founder story — why *you* are the right person to solve this.", "Add a competitive landscape snapshot to make your moat tangible.", "Strengthen the Ask with a clear use-of-funds breakdown."],
-  };
-}
- 
-async function ai_refine(key, content, instruction) {
-  await _sleep(700 + Math.random() * 500);
-  return `${content.replace(/\.$/, "")} [Refined: ${instruction} — this version is sharper, more data-driven, and investor-ready.]`;
-}
- 
-async function ai_deliveryAnalysis(transcript, durationSec) {
-  await _sleep(1100 + Math.random() * 500);
-  const words = (transcript || "").trim().split(/\s+/).filter(Boolean).length;
-  return {
-    overallScore: 60 + Math.floor(Math.random() * 30),
-    pace: durationSec > 0 ? Math.round((words / durationSec) * 60) : 130,
-    clarity: 60 + Math.floor(Math.random() * 35),
-    confidence: 55 + Math.floor(Math.random() * 38),
-    fillerWords: { um: Math.floor(Math.random() * 5), uh: Math.floor(Math.random() * 4), like: Math.floor(Math.random() * 7), so: Math.floor(Math.random() * 6) },
-    suggestions: ["Slow down 10–15% in the Premise — you're rushing the setup.", "Pause after stating the problem; silence is more powerful than 'um'.", "Your energy in the Idea section is strong — carry it all the way through the Ask."],
-  };
-}
- 
-async function ai_scoreCompare(content) {
-  await _sleep(800 + Math.random() * 500);
-  const words = content.trim().split(/\s+/).length;
-  const score = Math.min(94, 38 + Math.floor(words / 10) + Math.floor(Math.random() * 22));
-  const grades = ["F","D","C","C+","B-","B","B+","A-","A","A+"];
-  const grade = grades[Math.min(Math.floor(score / 10.5), grades.length - 1)];
-  return { score, grade, verdict: score >= 75 ? "Strong — ready for investor meetings." : score >= 55 ? "Solid foundation — a few gaps to close." : "Needs strengthening before investor meetings." };
-}
+import { 
+  ai_chat, 
+  ai_draftSection, 
+  ai_fullAnalysis, 
+  ai_refine, 
+  ai_deliveryAnalysis, 
+  ai_scoreCompare 
+} from "../genai.js";
+console.log("imported");
  
 // ══════════════════════════════════════════════════════════════════════════════
 //  THEME
@@ -533,31 +441,35 @@ function CreatorStudio({profile,sessionId,initData,onBack,onSave}){
  
   const addMsg=(m)=>setMsgs(ms=>[...ms,{id:`m_${Date.now()}_${Math.random().toString(36).slice(2)}`, ...m}]);
  
-  const send=async(text)=>{
-    const t=(text||input).trim(); if(!t)return;
-    setInput(""); addMsg({role:"user",type:"msg",text:t}); setAiLoading(true);
-    try{
-      const resp=await ai_chat(t,profile,sections);
-      if(resp.type==="section_draft"){
-        addMsg({role:"ai",type:"msg",text:resp.intro});
-        addMsg({role:"ai",type:"draft",sectionKey:resp.sectionKey,draft:resp.draft});
-      } else if(resp.type==="generate_all"){
-        addMsg({role:"ai",type:"msg",text:resp.text});
-        for(const sec of PITCH_SECTIONS){
-          const d=await ai_draftSection(sec.key,profile,sections[sec.key]);
-          setSections(s=>({...s,[sec.key]:d}));
-          addMsg({role:"ai",type:"draft",sectionKey:sec.key,draft:d});
-        }
-      } else if(resp.type==="analysis_trigger"){
-        addMsg({role:"ai",type:"msg",text:resp.text});
-        await runAnalysis(true);
-      } else if(resp.type==="upload_trigger"||resp.type==="export_trigger"){
-        addMsg({role:"ai",type:"msg",text:resp.text});
-      } else {
-        addMsg({role:"ai",type:"msg",text:resp.text});
-      }
-    }finally{setAiLoading(false);inputRef.current?.focus();}
-  };
+  const send = async (text) => {
+  const t = (text || input).trim();
+  if (!t) return;
+
+  // 1. Filter out the welcome message (id: "w0") and any message without text
+  // 2. Ensure we only send "msg" types to keep the history clean
+  const historyForAI = msgs
+    .filter(m => m.id !== "w0" && m.type === "msg") 
+    .map(m => ({
+      role: m.role === "ai" ? "model" : "user",
+      parts: [{ text: m.text }],
+    }));
+
+  setInput("");
+  addMsg({ role: "user", type: "msg", text: t });
+  setAiLoading(true);
+
+  try {
+    const resp = await ai_chat(t, profile, sections, historyForAI);
+    // LOG THIS to see what App.jsx thinks 'resp' is
+  console.log("App received response:", resp);
+    // ... handle response 
+    addMsg({ role: "ai", type: "msg", text: resp.text }); 
+  } catch (error) {
+    console.error(error);
+  } finally {
+    setAiLoading(false);
+  }
+};
  
   const runAnalysis=async(fromChat=false)=>{
     if(!fromChat)addMsg({role:"user",type:"msg",text:"Analyze my full pitch."});
