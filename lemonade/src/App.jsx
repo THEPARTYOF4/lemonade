@@ -62,6 +62,7 @@ const GS=()=>(
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
     @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
     @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes modalPop{from{opacity:0;transform:translateY(24px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
     .fu{animation:fadeUp .4s cubic-bezier(.22,1,.36,1) both}
     .fi{animation:fadeIn .25s ease both}
     .fl{animation:float 3.5s ease-in-out infinite}
@@ -524,7 +525,7 @@ const runAnalysis = async (fromChat = false) => {
   ];
  
   return(
-    <div style={{height:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
+    <div style={{height:"100vh",background:T.bg,display:"flex",flexDirection:"column",position:"relative"}}>
       <div style={{background:T.surface,borderBottom:`1.5px solid ${T.border}`,padding:"8px 16px",display:"flex",alignItems:"center",gap:"11px",flexShrink:0,flexWrap:"wrap"}}>
         <span style={{fontSize:"16px"}}>🍋</span>
         <span style={{fontFamily:SERIF,fontWeight:700,fontSize:"14px"}}>lemonade</span>
@@ -914,7 +915,9 @@ function ReviewerStudio({profile,sessionId,initData,onBack,onSave}){
   const[compPitches,setCompPitches]=useState(initData?.compPitches||[]);
   const[weights,setWeights]=useState(Object.fromEntries(PITCH_SECTIONS.map(s=>[s.key,20])));
   const[exporting,setExporting]=useState(null);
- 
+  const[shareOpen,setShareOpen]=useState(false);
+  const[shareCopied,setShareCopied]=useState(false);
+
   // Chat state — welcome msg + combined review+discuss in one thread
   const[msgs,setMsgs]=useState(initData?.msgs||[{
     id:"rw0",role:"ai",type:"welcome",
@@ -924,7 +927,8 @@ function ReviewerStudio({profile,sessionId,initData,onBack,onSave}){
   const[chatLoading,setChatLoading]=useState(false);
   const chatRef=useRef(null);
   const inputRef=useRef(null);
- 
+  const shareLink=`https://lemonade.review/session/${sessionId||"demo"}`;
+
   useEffect(()=>{onSave({pitch,evaluation,comments,msgs,compPitches})},[pitch,evaluation,comments,msgs,compPitches]);
   useEffect(()=>{if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},[msgs,chatLoading]);
  
@@ -997,9 +1001,33 @@ function ReviewerStudio({profile,sessionId,initData,onBack,onSave}){
           {PANELS.map(([id,lbl])=>(
             <Btn key={id} sm v={panel===id?"lemon":"ghost"} onClick={()=>setPanel(id)}>{lbl}</Btn>
           ))}
+          <Btn sm v={shareOpen?"outline":"ghost"} onClick={()=>setShareOpen(true)}>
+            🔗 Share Session
+          </Btn>
         </div>
       </div>
- 
+
+      {shareOpen&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(26,21,0,0.32)",backdropFilter:"blur(2.3px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:20,padding:"18px"}}>
+          <div style={{background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:"16px",padding:"26px",maxWidth:"540px",width:"100%",minHeight:"240px",boxShadow:"0 24px 60px rgba(0,0,0,0.22)",display:"flex",flexDirection:"column",gap:"14px",animation:"modalPop .32s cubic-bezier(.22,1,.36,1)",transformOrigin:"center"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{fontSize:"14px",fontWeight:700}}>Share Reviewer Session</div>
+              <button onClick={()=>setShareOpen(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"16px",color:T.muted}}>✕</button>
+            </div>
+            <div style={{fontSize:"12px",color:T.muted,lineHeight:1.55}}>
+              Concept preview: send this link to invite reviewers into the same chat, annotations, and pitch canvas. Once real-time sync ships, everyone inside will see the identical timeline in lockstep.
+            </div>
+            <div style={{display:"flex",gap:"8px",alignItems:"center",flexWrap:"wrap"}}>
+              <code style={{background:T.card,border:`1.5px solid ${T.border}`,borderRadius:"8px",padding:"8px 10px",fontFamily:MONO,fontSize:"12px",color:T.text,flex:"1 1 220px"}}>{shareLink}</code>
+              <Btn sm v="secondary" onClick={()=>{navigator.clipboard?.writeText(shareLink);setShareCopied(true);setTimeout(()=>setShareCopied(false),1800);}}>
+                {shareCopied?"Copied":"Copy"}
+              </Btn>
+            </div>
+            <div style={{fontSize:"11px",color:T.mutedLight,fontStyle:"italic"}}>Prototype only — link is illustrative until workspace sharing is live.</div>
+          </div>
+        </div>
+      )}
+
       {/* ── Body: chat left | panels right ── */}
       <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 370px",overflow:"hidden"}}>
  
