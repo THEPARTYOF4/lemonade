@@ -185,7 +185,7 @@ Respond with valid JSON only — no markdown fences, no text outside the object.
 
   const model = getCoachModel(extraCtx);
 
-  const prompt = `Analyze the pitch sections above and return this exact JSON:
+  const prompt = `Analyze the pitch sections ${JSON.stringify(sections)} and return this exact JSON:
 {
   "score": <overall 0-100 integer>,
   "grade": "<A+|A|A-|B+|B|B-|C+|C|C-|D|F>",
