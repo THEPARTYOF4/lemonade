@@ -491,7 +491,6 @@ function CreatorStudio({profile,sessionId,initData,onBack,onSave}){
     addMsg({role:"user",type:"msg",text:"I've uploaded my existing pitch deck."});
     setAiLoading(true);
     try{
-      await _sleep(1100);
       const words=content.split(/\s+/);
       const chunk=Math.ceil(words.length/5);
       const parsed={};
@@ -864,203 +863,397 @@ function PracticePanel({sections}){
 // ══════════════════════════════════════════════════════════════════════════════
 //  REVIEWER STUDIO
 // ══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
+//  REVIEWER STUDIO — two-column layout matching CreatorStudio
+//  Left: combined review+discuss chat  |  Right: tabbed panels
+// ══════════════════════════════════════════════════════════════════════════════
 function ReviewerStudio({profile,sessionId,initData,onBack,onSave}){
   const[pitch,setPitch]=useState(initData?.pitch||"");
   const[evaluation,setEvaluation]=useState(initData?.evaluation||null);
-  const[loading,setLoading]=useState(false);
-  const[tab,setTab]=useState("review");
+  const[evalLoading,setEvalLoading]=useState(false);
+  const[panel,setPanel]=useState("evaluation");
   const[comments,setComments]=useState(initData?.comments||[]);
   const[newCmt,setNewCmt]=useState("");
-  const[chatHist,setChatHist]=useState(initData?.chatHist||[]);
-  const[chatIn,setChatIn]=useState("");
-  const[chatLoading,setChatLoading]=useState(false);
   const[compPitches,setCompPitches]=useState(initData?.compPitches||[]);
   const[weights,setWeights]=useState(Object.fromEntries(PITCH_SECTIONS.map(s=>[s.key,20])));
   const[exporting,setExporting]=useState(null);
+ 
+  // Chat state — welcome msg + combined review+discuss in one thread
+  const[msgs,setMsgs]=useState(initData?.msgs||[{
+    id:"rw0",role:"ai",type:"welcome",
+    text:`Hey ${profile.name?.split(" ")[0]||"there"} 👋 I'm your **Lemonade Review Coach**.\n\nPaste or upload a pitch on the left panel to get started. I can:\n• **Evaluate** any pitch with a full grade and PITCH breakdown\n• **Discuss** what's working, what's missing, and why\n• **Compare** multiple pitches against each other\n• Answer questions like "Would you fund this?" or "What's the biggest risk?"\n\nDrop a pitch in and let's dig in.`,
+  }]);
+  const[chatIn,setChatIn]=useState("");
+  const[chatLoading,setChatLoading]=useState(false);
   const chatRef=useRef(null);
+  const inputRef=useRef(null);
  
-  useEffect(()=>{onSave({pitch,evaluation,comments,chatHist,compPitches})},[pitch,evaluation,comments,chatHist,compPitches]);
-  useEffect(()=>{if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},[chatHist,chatLoading]);
+  useEffect(()=>{onSave({pitch,evaluation,comments,msgs,compPitches})},[pitch,evaluation,comments,msgs,compPitches]);
+  useEffect(()=>{if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},[msgs,chatLoading]);
  
-  const evaluate=async()=>{if(!pitch.trim())return;setLoading(true);try{const out=await ai_scoreCompare(pitch);setEvaluation(out);}finally{setLoading(false);}};
-  const chatSend=async()=>{
-    if(!chatIn.trim())return;const msg=chatIn;setChatIn("");setChatLoading(true);
-    setChatHist(h=>[...h,{role:"user",text:msg}]);
-    try{const r=await ai_chat(msg,profile,{});setChatHist(h=>[...h,{role:"ai",text:r.text||r.intro||"Let me think about that…"}]);}
-    finally{setChatLoading(false);}
+  const addMsg=(m)=>setMsgs(ms=>[...ms,{id:`rm_${Date.now()}_${Math.random().toString(36).slice(2)}`,...m}]);
+ 
+  // Evaluate pitch and post result as a chat message + update panel
+  const runEvaluation=async(fromChat=false)=>{
+    if(!pitch.trim()){
+      addMsg({role:"ai",type:"msg",text:"No pitch content yet — paste or upload a pitch first, then I'll evaluate it."});
+      return;
+    }
+    if(!fromChat) addMsg({role:"user",type:"msg",text:"Evaluate this pitch."});
+    setEvalLoading(true);
+    try{
+      const out=await ai_scoreCompare(pitch);
+      setEvaluation(out);
+      setPanel("evaluation");
+      addMsg({role:"ai",type:"eval_result",evaluation:out});
+    }finally{setEvalLoading(false);}
+  };
+ 
+  const chatSend=async(overrideText)=>{
+    const t=(overrideText||chatIn).trim();
+    if(!t)return;
+    setChatIn("");
+    addMsg({role:"user",type:"msg",text:t});
+    setChatLoading(true);
+    try{
+      const lower=t.toLowerCase();
+      // Route: evaluate intent
+      if(lower.includes("evaluat")||lower.includes("score")||lower.includes("grade")||lower.includes("review this")||lower.includes("assess")){
+        await runEvaluation(true);
+        return;
+      }
+      // Route: compare pitches
+      if(lower.includes("compar")){
+        setPanel("compare");
+        addMsg({role:"ai",type:"msg",text:"I've opened the **Compare** panel on the right — add pitches there to score them side by side."});
+        return;
+      }
+      // Route: export
+      if(lower.includes("export")||lower.includes("download")||lower.includes("pdf")||lower.includes("pptx")){
+        setPanel("export");
+        addMsg({role:"ai",type:"msg",text:"Opening the **Export** panel — choose your format on the right."});
+        return;
+      }
+      // General AI discussion about the pitch
+      const r=await ai_chat(t,profile,{pitch:pitch.slice(0,800),evaluation});
+      addMsg({role:"ai",type:"msg",text:r.text||r.intro||"Let me think about that…"});
+    }finally{setChatLoading(false);inputRef.current?.focus();}
   };
  
   const GCOL=s=>s>=70?T.success:s>=50?T.warn:T.danger;
   const GC={"A+":T.success,"A":T.success,"A-":T.success,"B+":T.blue,"B":T.blue,"B-":T.blue,"C+":T.warn,"C":T.warn,"D":T.danger,"F":T.danger};
-  const TABS=[["review","🔍 Review"],["rubric","⚙️ Rubric"],["discuss","💬 Discuss"],["compare","⊕ Compare"],["export","⬇ Export"]];
+  const PANELS=[["evaluation","📊 Evaluation"],["rubric","⚙️ Rubric"],["compare","⊕ Compare"],["export","⬇ Export"]];
  
   return(
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
-      <div style={{background:T.surface,borderBottom:`1.5px solid ${T.border}`,padding:"8px 16px",display:"flex",alignItems:"center",gap:"11px",flexWrap:"wrap"}}>
+    <div style={{height:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
+ 
+      {/* ── Header — mirrors CreatorStudio exactly ── */}
+      <div style={{background:T.surface,borderBottom:`1.5px solid ${T.border}`,padding:"8px 16px",display:"flex",alignItems:"center",gap:"11px",flexShrink:0,flexWrap:"wrap"}}>
         <span style={{fontSize:"16px"}}>🍋</span>
         <span style={{fontFamily:SERIF,fontWeight:700,fontSize:"14px"}}>lemonade</span>
         <div style={{width:"1px",height:"15px",background:T.border}}/>
         <Btn v="ghost" sm onClick={onBack}>← Back</Btn>
         <span style={{fontWeight:600,fontSize:"14px"}}>{profile.name}</span>
-        <Chip label={profile.role} color={T.citrus}/><Chip label={profile.focus}/>
+        <Chip label={profile.role} color={T.citrus}/>
+        <Chip label={profile.focus}/>
+        <div style={{marginLeft:"auto",display:"flex",gap:"6px",flexWrap:"wrap"}}>
+          {PANELS.map(([id,lbl])=>(
+            <Btn key={id} sm v={panel===id?"lemon":"ghost"} onClick={()=>setPanel(id)}>{lbl}</Btn>
+          ))}
+        </div>
       </div>
-      <div style={{background:T.surface,borderBottom:`1.5px solid ${T.border}`,display:"flex",overflowX:"auto"}}>
-        {TABS.map(([id,lbl])=>(
-          <button key={id} onClick={()=>setTab(id)} style={{padding:"8px 16px",fontSize:"13px",fontFamily:FONT,fontWeight:600,background:"none",border:"none",cursor:"pointer",whiteSpace:"nowrap",color:tab===id?T.citrus:T.muted,borderBottom:tab===id?`2.5px solid ${T.citrus}`:"2.5px solid transparent"}}>{lbl}</button>
-        ))}
-      </div>
-      <div style={{flex:1,overflow:"auto",padding:"22px"}}>
-        {tab==="review"&&(
-          <div style={{maxWidth:"980px",margin:"0 auto",display:"grid",gridTemplateColumns:"1fr 350px",gap:"20px"}}>
-            <div>
-              <div style={{marginBottom:"10px"}}><DropZone onText={t=>{setPitch(t)}} label="Upload pitch deck to review" sm/></div>
-              <textarea value={pitch} onChange={e=>setPitch(e.target.value)} placeholder="Or paste pitch content here…" rows={15}
-                style={{width:"100%",background:T.card,border:`1.5px solid ${T.border}`,borderRadius:"9px",color:T.text,fontSize:"14px",padding:"12px 13px",resize:"vertical",outline:"none",lineHeight:1.65}}/>
-              <div style={{display:"flex",gap:"9px",marginTop:"9px",flexWrap:"wrap"}}>
-                <Btn v="citrus" onClick={evaluate} disabled={loading||!pitch.trim()}>
-                  {loading?<><Spin size={13} color="#fff"/>Evaluating…</>:"✦ Evaluate Pitch"}
-                </Btn>
-                {evaluation&&<Btn v="secondary" onClick={()=>setEvaluation(null)}>Clear</Btn>}
-              </div>
-              <div style={{marginTop:"16px"}}>
-                <div style={{fontSize:"11px",fontFamily:MONO,color:T.muted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:"6px"}}>Annotations</div>
-                <div style={{display:"flex",gap:"7px"}}>
-                  <input value={newCmt} onChange={e=>setNewCmt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&newCmt.trim()&&(setComments(c=>[...c,{text:newCmt,time:new Date().toLocaleTimeString()}]),setNewCmt(""))} placeholder="Add a comment or flag…"
-                    style={{flex:1,background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:"7px",color:T.text,fontSize:"13px",padding:"6px 10px",outline:"none"}}/>
-                  <Btn sm onClick={()=>{if(newCmt.trim()){setComments(c=>[...c,{text:newCmt,time:new Date().toLocaleTimeString()}]);setNewCmt("");}}}>+ Add</Btn>
-                </div>
-                {comments.map((c,i)=>(
-                  <div key={i} style={{marginTop:"5px",padding:"5px 9px",background:T.surface,borderRadius:"5px",fontSize:"12px"}}>
-                    <span style={{color:T.citrus,marginRight:"6px"}}>{profile.name}</span>
-                    <span style={{color:T.muted,marginRight:"6px"}}>[{c.time}]</span>{c.text}
-                  </div>
-                ))}
-              </div>
+ 
+      {/* ── Body: chat left | panels right ── */}
+      <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 370px",overflow:"hidden"}}>
+ 
+        {/* ── LEFT: combined review input + chat ── */}
+        <div style={{display:"flex",flexDirection:"column",borderRight:`1.5px solid ${T.border}`,overflow:"hidden"}}>
+ 
+          {/* Pitch input area — collapsible header feel */}
+          <div style={{borderBottom:`1.5px solid ${T.border}`,background:T.surface,flexShrink:0}}>
+            <div style={{padding:"10px 14px 6px",display:"flex",alignItems:"center",gap:"8px"}}>
+              <span style={{fontSize:"11px",fontFamily:MONO,color:T.muted,textTransform:"uppercase",letterSpacing:".08em",flex:1}}>Pitch Content</span>
+              <Btn sm v="citrus" onClick={()=>runEvaluation(false)} disabled={evalLoading||!pitch.trim()}>
+                {evalLoading?<><Spin size={11} color="#fff"/>Evaluating…</>:"✦ Evaluate"}
+              </Btn>
+              {evaluation&&<Chip label={evaluation.grade} color={GC[evaluation.grade]||T.text}/>}
             </div>
-            <div>
-              {!evaluation&&!loading&&<Card style={{textAlign:"center",padding:"44px 18px"}}><div style={{fontSize:"30px",marginBottom:"9px"}}>🔍</div><p style={{color:T.muted,fontSize:"13px"}}>Paste a pitch and click Evaluate</p></Card>}
-              {loading&&<div style={{textAlign:"center",padding:"44px"}}><Spin/></div>}
-              {evaluation&&(
-                <div className="fu" style={{display:"flex",flexDirection:"column",gap:"11px"}}>
-                  <Card style={{background:T.citrusSoft,textAlign:"center",padding:"20px"}}>
-                    <div style={{fontFamily:SERIF,fontWeight:800,fontSize:"54px",color:GC[evaluation.grade]||T.text,lineHeight:1,marginBottom:"4px"}}>{evaluation.grade}</div>
-                    <div style={{fontSize:"13px",color:T.muted,marginBottom:"10px"}}>{evaluation.score}/100</div>
-                    <div style={{padding:"8px",background:T.surface,borderRadius:"7px",fontSize:"13px",color:T.text,lineHeight:1.5}}>"{evaluation.verdict}"</div>
+            <div style={{padding:"0 14px 10px",display:"flex",gap:"7px"}}>
+              <DropZone onText={t=>setPitch(t)} label="Drop pitch here" sm/>
+              <textarea value={pitch} onChange={e=>setPitch(e.target.value)}
+                placeholder="Or paste pitch content here — executive summary, slide notes, transcript…"
+                rows={4}
+                style={{width:"100%",background:T.card,border:`1.5px solid ${T.border}`,borderRadius:"8px",color:T.text,fontSize:"13px",padding:"9px 11px",resize:"none",outline:"none",lineHeight:1.6}}/>
+            </div>
+          </div>
+ 
+          {/* Chat messages */}
+          <div ref={chatRef} style={{flex:1,overflowY:"auto",padding:"14px 16px 6px",display:"flex",flexDirection:"column",gap:"10px"}}>
+            {msgs.map(msg=><ReviewMsgBubble key={msg.id} msg={msg} GCOL={GCOL} GC={GC}/>)}
+            {(chatLoading||evalLoading)&&(
+              <div style={{display:"flex",gap:"8px",alignItems:"center",padding:"9px 13px",background:T.card,border:`1.5px solid ${T.border}`,borderRadius:"11px",alignSelf:"flex-start",maxWidth:"180px"}}>
+                <Spin size={13}/><span style={{fontSize:"13px",color:T.muted}}>{evalLoading?"Evaluating…":"Thinking…"}</span>
+              </div>
+            )}
+          </div>
+ 
+          {/* Quick prompts — shown when chat is fresh */}
+          {msgs.length<=1&&(
+            <div style={{padding:"4px 14px 8px",display:"flex",flexWrap:"wrap",gap:"5px"}}>
+              {["Evaluate this pitch","What are the biggest risks?","Would you fund this?","What's missing?","How investor-ready is this?"].map(q=>(
+                <button key={q} onClick={()=>chatSend(q)}
+                  style={{padding:"4px 11px",fontSize:"12px",background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:"20px",cursor:"pointer",color:T.citrus,fontWeight:500,fontFamily:FONT,transition:"all .17s"}}>
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
+ 
+          {/* Chat input */}
+          <div style={{padding:"8px 14px 12px",borderTop:`1.5px solid ${T.border}`,display:"flex",gap:"9px",alignItems:"flex-end"}}>
+            <textarea ref={inputRef} value={chatIn} onChange={e=>setChatIn(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();chatSend();}}}
+              placeholder="Ask about this pitch, request an evaluation, compare pitches…"
+              rows={2}
+              style={{flex:1,background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:"9px",color:T.text,fontSize:"14px",padding:"9px 12px",resize:"none",outline:"none",lineHeight:1.5,maxHeight:"110px"}}/>
+            <Btn v="citrus" onClick={()=>chatSend()} disabled={chatLoading||evalLoading||!chatIn.trim()} style={{flexShrink:0,alignSelf:"flex-end"}}>
+              {(chatLoading||evalLoading)?<Spin size={13} color="#fff"/>:"Send"}
+            </Btn>
+          </div>
+        </div>
+ 
+        {/* ── RIGHT: tabbed panels ── */}
+        <div style={{overflow:"auto",background:T.surface}}>
+ 
+          {/* EVALUATION */}
+          {panel==="evaluation"&&(
+            <div style={{padding:"14px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
+                <div style={{fontSize:"11px",fontFamily:MONO,color:T.muted,textTransform:"uppercase",letterSpacing:".08em"}}>Evaluation</div>
+                <Btn sm v="outlineC" onClick={()=>runEvaluation(false)} disabled={evalLoading||!pitch.trim()}>
+                  {evalLoading?<Spin size={12}/>:"Re-evaluate"}
+                </Btn>
+              </div>
+              {!evaluation&&!evalLoading&&(
+                <div style={{textAlign:"center",padding:"44px 16px",color:T.muted}}>
+                  <div style={{fontSize:"32px",marginBottom:"10px"}}>🔍</div>
+                  <p style={{fontSize:"13px",marginBottom:"5px"}}>No evaluation yet</p>
+                  <p style={{fontSize:"12px",color:T.mutedLight}}>Paste a pitch and click Evaluate, or ask me in chat.</p>
+                </div>
+              )}
+              {evalLoading&&<div style={{textAlign:"center",padding:"44px"}}><Spin/></div>}
+              {evaluation&&!evalLoading&&(
+                <div className="fu">
+                  {/* Grade card */}
+                  <Card style={{background:T.citrusSoft,textAlign:"center",marginBottom:"11px",border:`1.5px solid ${T.citrus}33`}}>
+                    <div style={{fontFamily:SERIF,fontWeight:800,fontSize:"60px",color:GC[evaluation.grade]||T.text,lineHeight:1}}>{evaluation.grade}</div>
+                    <div style={{fontSize:"13px",color:T.muted,margin:"4px 0 10px"}}>{evaluation.score}/100</div>
+                    <div style={{padding:"9px 11px",background:T.surface,borderRadius:"8px",fontSize:"13px",color:T.text,lineHeight:1.55,textAlign:"left"}}>
+                      "{evaluation.verdict}"
+                    </div>
                   </Card>
-                  <Card>
-                    <div style={{fontSize:"12px",fontWeight:600,marginBottom:"9px"}}>PITCH Scores (estimated)</div>
+                  {/* PITCH breakdown */}
+                  <Card style={{marginBottom:"11px"}}>
+                    <div style={{fontSize:"12px",fontWeight:600,marginBottom:"10px"}}>PITCH Breakdown</div>
                     {PITCH_SECTIONS.map(sec=>{
                       const score=Math.max(30,evaluation.score+Math.floor(Math.random()*16)-7);
                       return(
-                        <div key={sec.key} style={{marginBottom:"9px"}}>
-                          <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"2px"}}>
-                            <PB sec={sec} size={18}/><span style={{fontSize:"11px",fontWeight:600,flex:1}}>{sec.label}</span>
-                            <span style={{fontSize:"11px",color:T.muted}}>{score}/100</span>
+                        <div key={sec.key} style={{marginBottom:"10px"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"3px"}}>
+                            <PB sec={sec} size={19}/>
+                            <span style={{fontSize:"12px",fontWeight:600,flex:1}}>{sec.label}</span>
+                            <span style={{fontSize:"11px",color:T.muted,fontFamily:MONO}}>{score}/100</span>
                           </div>
                           <Bar v={score}/>
                         </div>
                       );
                     })}
                   </Card>
+                  {/* Annotations */}
+                  <Card>
+                    <div style={{fontSize:"12px",fontWeight:600,marginBottom:"9px"}}>Annotations</div>
+                    <div style={{display:"flex",gap:"7px",marginBottom:"7px"}}>
+                      <input value={newCmt} onChange={e=>setNewCmt(e.target.value)}
+                        onKeyDown={e=>e.key==="Enter"&&newCmt.trim()&&(setComments(c=>[...c,{text:newCmt,time:new Date().toLocaleTimeString()}]),setNewCmt(""))}
+                        placeholder="Flag something in this pitch…"
+                        style={{flex:1,background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:"6px",color:T.text,fontSize:"12px",padding:"5px 9px",outline:"none"}}/>
+                      <Btn sm onClick={()=>{if(newCmt.trim()){setComments(c=>[...c,{text:newCmt,time:new Date().toLocaleTimeString()}]);setNewCmt("");}}} v="secondary">+</Btn>
+                    </div>
+                    {comments.length===0&&<div style={{fontSize:"12px",color:T.mutedLight,textAlign:"center",padding:"8px 0"}}>No annotations yet</div>}
+                    {comments.map((c,i)=>(
+                      <div key={i} style={{padding:"5px 8px",background:T.surface,borderRadius:"5px",fontSize:"12px",marginBottom:"4px",display:"flex",alignItems:"baseline",gap:"6px"}}>
+                        <span style={{color:T.citrus,fontWeight:600,flexShrink:0}}>{profile.name}</span>
+                        <span style={{color:T.mutedLight,fontSize:"10px",flexShrink:0}}>{c.time}</span>
+                        <span style={{color:T.text}}>{c.text}</span>
+                      </div>
+                    ))}
+                  </Card>
                 </div>
               )}
             </div>
-          </div>
-        )}
-        {tab==="rubric"&&(
-          <div style={{maxWidth:"540px",margin:"0 auto"}}>
-            <h2 style={{fontFamily:SERIF,fontSize:"20px",fontWeight:700,marginBottom:"4px"}}>Customize Rubric</h2>
-            <p style={{color:T.muted,fontSize:"13px",marginBottom:"18px"}}>Adjust weights to match your investment thesis</p>
-            {PITCH_SECTIONS.map(sec=>(
-              <Card key={sec.key} style={{marginBottom:"9px"}}>
-                <div style={{display:"flex",alignItems:"center",gap:"9px",marginBottom:"6px"}}>
-                  <PB sec={sec} size={23}/><span style={{fontWeight:600,flex:1}}>{sec.label}</span>
-                  <span style={{fontWeight:700,fontSize:"14px",color:T.citrus}}>{weights[sec.key]}%</span>
-                </div>
-                <input type="range" min="5" max="40" step="5" value={weights[sec.key]} onChange={e=>setWeights(w=>({...w,[sec.key]:+e.target.value}))} style={{width:"100%",accentColor:T.citrus}}/>
-              </Card>
-            ))}
-            <div style={{padding:"9px",background:T.surface,borderRadius:"7px",display:"flex",justifyContent:"space-between"}}>
-              <span style={{color:T.muted,fontSize:"13px"}}>Total</span>
-              <span style={{fontWeight:700,color:Object.values(weights).reduce((a,b)=>a+b,0)===100?T.success:T.danger}}>{Object.values(weights).reduce((a,b)=>a+b,0)}%</span>
-            </div>
-          </div>
-        )}
-        {tab==="discuss"&&(
-          <div style={{maxWidth:"620px",margin:"0 auto",display:"flex",flexDirection:"column",height:"calc(100vh - 190px)"}}>
-            <div style={{marginBottom:"11px"}}>
-              <h2 style={{fontFamily:SERIF,fontSize:"19px",fontWeight:700}}>Discuss the Pitch</h2>
-              <p style={{fontSize:"12px",color:T.muted}}>Explore your evaluation deeper with AI</p>
-            </div>
-            <div ref={chatRef} style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:"9px",paddingBottom:"11px"}}>
-              {chatHist.length===0&&(
-                <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
-                  {["What are the biggest risks here?","Would you fund this? Why?","What's missing from this pitch?","How does this compare to what you normally see?"].map(q=>(
-                    <div key={q} onClick={()=>setChatIn(q)} style={{padding:"8px 12px",borderRadius:"8px",border:`1.5px solid ${T.border}`,cursor:"pointer",fontSize:"13px",background:T.surface}}>💬 {q}</div>
-                  ))}
-                </div>
-              )}
-              {chatHist.map((m,i)=>(
-                <div key={i} style={{padding:"9px 13px",borderRadius:"10px",maxWidth:"84%",fontSize:"14px",lineHeight:1.6,alignSelf:m.role==="user"?"flex-end":"flex-start",background:m.role==="user"?T.citrus+"EE":T.card,color:m.role==="user"?"#fff":T.text,border:m.role==="ai"?`1.5px solid ${T.border}`:"none"}}>{m.text}</div>
-              ))}
-              {chatLoading&&<div style={{padding:"9px"}}><Spin/></div>}
-            </div>
-            <div style={{display:"flex",gap:"9px"}}>
-              <input value={chatIn} onChange={e=>setChatIn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&chatSend()} placeholder="Ask about this pitch…"
-                style={{flex:1,background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:"8px",color:T.text,fontSize:"14px",padding:"8px 12px",outline:"none"}}/>
-              <Btn v="citrus" onClick={chatSend} disabled={chatLoading||!chatIn.trim()}>Send</Btn>
-            </div>
-          </div>
-        )}
-        {tab==="compare"&&(
-          <div style={{maxWidth:"920px",margin:"0 auto"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px",flexWrap:"wrap",gap:"9px"}}>
-              <div><h2 style={{fontFamily:SERIF,fontSize:"19px",fontWeight:700}}>Compare Pitches</h2><p style={{color:T.muted,fontSize:"12px"}}>Score multiple pitches side by side</p></div>
-              <Btn v="secondary" onClick={()=>setCompPitches(p=>[...p,{id:mkId(),title:`Pitch ${p.length+1}`,content:"",score:null}])}>+ Add Pitch</Btn>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.max(1,Math.min(3,compPitches.length))},1fr)`,gap:"13px"}}>
-              {compPitches.map((p,i)=>(
-                <Card key={p.id}>
-                  <input value={p.title} onChange={e=>setCompPitches(arr=>arr.map((x,j)=>j===i?{...x,title:e.target.value}:x))}
-                    style={{background:"transparent",border:"none",color:T.text,fontFamily:SERIF,fontWeight:700,fontSize:"14px",outline:"none",width:"100%",marginBottom:"9px"}}/>
-                  <div style={{marginBottom:"7px"}}><DropZone onText={c=>setCompPitches(arr=>arr.map((x,j)=>j===i?{...x,content:c}:x))} sm/></div>
-                  <textarea value={p.content} onChange={e=>setCompPitches(arr=>arr.map((x,j)=>j===i?{...x,content:e.target.value}:x))} placeholder="Or paste pitch…" rows={4}
-                    style={{width:"100%",background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:"6px",color:T.text,fontSize:"12px",padding:"7px 9px",resize:"vertical",outline:"none"}}/>
-                  <div style={{display:"flex",gap:"6px",marginTop:"7px"}}>
-                    <Btn sm v="outlineC" onClick={async()=>{if(!p.content.trim())return;const s=await ai_scoreCompare(p.content);setCompPitches(arr=>arr.map((x,j)=>j===i?{...x,score:s}:x));}}>Score</Btn>
-                    <Btn sm v="danger" onClick={()=>setCompPitches(arr=>arr.filter((_,j)=>j!==i))}>Remove</Btn>
+          )}
+ 
+          {/* RUBRIC */}
+          {panel==="rubric"&&(
+            <div style={{padding:"14px"}}>
+              <div style={{fontSize:"11px",fontFamily:MONO,color:T.muted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:"12px"}}>Scoring Rubric</div>
+              <p style={{color:T.muted,fontSize:"12px",marginBottom:"14px",lineHeight:1.5}}>Adjust weights to match your investment thesis. Total must equal 100%.</p>
+              {PITCH_SECTIONS.map(sec=>(
+                <Card key={sec.key} style={{marginBottom:"8px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"9px",marginBottom:"7px"}}>
+                    <PB sec={sec} size={22}/>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:600,fontSize:"13px"}}>{sec.label}</div>
+                      <div style={{fontSize:"11px",color:T.muted}}>{sec.desc}</div>
+                    </div>
+                    <span style={{fontWeight:700,fontSize:"14px",color:T.citrus,fontFamily:MONO,minWidth:"36px",textAlign:"right"}}>{weights[sec.key]}%</span>
                   </div>
+                  <input type="range" min="5" max="40" step="5" value={weights[sec.key]}
+                    onChange={e=>setWeights(w=>({...w,[sec.key]:+e.target.value}))}
+                    style={{width:"100%",accentColor:T.citrus}}/>
+                </Card>
+              ))}
+              <div style={{padding:"9px 12px",background:T.surface,borderRadius:"8px",border:`1.5px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:"4px"}}>
+                <span style={{color:T.muted,fontSize:"13px"}}>Total weight</span>
+                <span style={{fontWeight:700,fontSize:"14px",fontFamily:MONO,color:Object.values(weights).reduce((a,b)=>a+b,0)===100?T.success:T.danger}}>
+                  {Object.values(weights).reduce((a,b)=>a+b,0)}%
+                </span>
+              </div>
+            </div>
+          )}
+ 
+          {/* COMPARE */}
+          {panel==="compare"&&(
+            <div style={{padding:"14px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
+                <div style={{fontSize:"11px",fontFamily:MONO,color:T.muted,textTransform:"uppercase",letterSpacing:".08em"}}>Compare Pitches</div>
+                <Btn sm v="secondary" onClick={()=>setCompPitches(p=>[...p,{id:mkId(),title:`Pitch ${p.length+1}`,content:"",score:null}])}>+ Add</Btn>
+              </div>
+              {compPitches.length===0&&(
+                <div style={{textAlign:"center",padding:"44px 16px",color:T.muted}}>
+                  <div style={{fontSize:"26px",marginBottom:"9px"}}>⊕</div>
+                  <p style={{fontSize:"13px"}}>Add pitches to score side by side</p>
+                </div>
+              )}
+              {compPitches.map((p,i)=>(
+                <Card key={p.id} style={{marginBottom:"9px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"7px",marginBottom:"8px"}}>
+                    <input value={p.title} onChange={e=>setCompPitches(arr=>arr.map((x,j)=>j===i?{...x,title:e.target.value}:x))}
+                      style={{background:"transparent",border:"none",color:T.text,fontFamily:SERIF,fontWeight:700,fontSize:"13px",outline:"none",flex:1}}/>
+                    <button onClick={()=>setCompPitches(arr=>arr.filter((_,j)=>j!==i))}
+                      style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:"14px",padding:"2px 4px"}}>✕</button>
+                  </div>
+                  <div style={{marginBottom:"7px"}}><DropZone onText={c=>setCompPitches(arr=>arr.map((x,j)=>j===i?{...x,content:c}:x))} sm/></div>
+                  <textarea value={p.content} onChange={e=>setCompPitches(arr=>arr.map((x,j)=>j===i?{...x,content:e.target.value}:x))}
+                    placeholder="Or paste pitch…" rows={3}
+                    style={{width:"100%",background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:"6px",color:T.text,fontSize:"12px",padding:"7px 9px",resize:"vertical",outline:"none",marginBottom:"7px"}}/>
+                  <Btn sm v="outlineC" full onClick={async()=>{if(!p.content.trim())return;const s=await ai_scoreCompare(p.content);setCompPitches(arr=>arr.map((x,j)=>j===i?{...x,score:s}:x));}}>
+                    ✦ Score this pitch
+                  </Btn>
                   {p.score&&(
-                    <div style={{marginTop:"9px",padding:"9px",background:T.surface,borderRadius:"7px"}}>
-                      <div style={{fontFamily:SERIF,fontWeight:800,fontSize:"26px",color:GC[p.score.grade]||T.text}}>{p.score.grade}</div>
-                      <div style={{fontSize:"12px",color:T.muted}}>{p.score.score}/100</div>
-                      <div style={{fontSize:"12px",color:T.text,marginTop:"3px",lineHeight:1.4}}>{p.score.verdict}</div>
+                    <div style={{marginTop:"9px",padding:"10px",background:T.citrusSoft,borderRadius:"7px",border:`1px solid ${T.citrus}22`}}>
+                      <div style={{display:"flex",alignItems:"baseline",gap:"8px",marginBottom:"5px"}}>
+                        <span style={{fontFamily:SERIF,fontWeight:800,fontSize:"28px",color:GC[p.score.grade]||T.text}}>{p.score.grade}</span>
+                        <span style={{fontSize:"12px",color:T.muted,fontFamily:MONO}}>{p.score.score}/100</span>
+                      </div>
+                      <div style={{fontSize:"12px",color:T.text,lineHeight:1.45}}>{p.score.verdict}</div>
                     </div>
                   )}
                 </Card>
               ))}
-              {compPitches.length===0&&<div style={{textAlign:"center",padding:"44px",color:T.muted,gridColumn:"1/-1"}}><div style={{fontSize:"26px",marginBottom:"7px"}}>⊕</div><p style={{fontSize:"13px"}}>Add pitches to compare side by side</p></div>}
             </div>
-          </div>
-        )}
-        {tab==="export"&&(
-          <div style={{maxWidth:"520px",margin:"0 auto"}}>
-            <h2 style={{fontFamily:SERIF,fontSize:"20px",fontWeight:700,marginBottom:"4px"}}>Export Review</h2>
-            <p style={{color:T.muted,fontSize:"12px",marginBottom:"18px"}}>Export your evaluation as a report</p>
-            {[
-              {id:"pptx",icon:"📊",label:"PowerPoint Report (.pptx)",desc:"Styled review presentation",action:async()=>{setExporting("pptx");try{await buildAndDownloadPPTX({company:"Pitch Review — "+profile.name,name:profile.name,industry:profile.focus,stage:profile.role,ask:""},{premise:pitch.slice(0,300)||"",idea:"",tell:"",clarify:"",help:""})}catch(e){alert("Export failed: "+e.message)}finally{setExporting(null)}}},
-              {id:"pdf",icon:"📄",label:"PDF Report",desc:"Print-ready review PDF",action:()=>openPDF({company:"Pitch Review",name:profile.name,industry:profile.focus,stage:profile.role,ask:""},{premise:pitch.slice(0,300)||"",idea:"",tell:"",clarify:"",help:""})},
-              {id:"txt",icon:"🗒",label:"Text Summary (.txt)",desc:"Plain text evaluation",action:()=>{const b=new Blob([`PITCH REVIEW\nReviewer: ${profile.name} (${profile.role})\nFocus: ${profile.focus}\n\n${"═".repeat(40)}\n\nPITCH CONTENT:\n${pitch}\n\n${"═".repeat(40)}\n\nEVALUATION:\n${evaluation?`Grade: ${evaluation.grade}\nScore: ${evaluation.score}/100\nVerdict: ${evaluation.verdict}`:"Not evaluated"}\n\nANNOTATIONS:\n${comments.map(c=>`[${c.time}] ${c.text}`).join("\n")||"None"}`],{type:"text/plain"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="pitch_review.txt";a.click();}},
-            ].map(({id,icon,label,desc,action})=>(
-              <Card key={id} style={{marginBottom:"9px",display:"flex",alignItems:"center",gap:"11px"}}>
-                <span style={{fontSize:"19px"}}>{icon}</span>
-                <div style={{flex:1}}><div style={{fontWeight:600,fontSize:"13px"}}>{label}</div><div style={{fontSize:"11px",color:T.muted,marginTop:"1px"}}>{desc}</div></div>
-                <Btn sm v="secondary" onClick={action} disabled={exporting===id}>{exporting===id?<Spin size={11}/>:"↓"}</Btn>
+          )}
+ 
+          {/* EXPORT */}
+          {panel==="export"&&(
+            <div style={{padding:"14px"}}>
+              <div style={{fontSize:"11px",fontFamily:MONO,color:T.muted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:"12px"}}>Export Review</div>
+              {[
+                {id:"pptx",icon:"📊",label:"PowerPoint (.pptx)",desc:"Styled review presentation",
+                  action:async()=>{setExporting("pptx");try{await buildAndDownloadPPTX({company:"Pitch Review — "+profile.name,name:profile.name,industry:profile.focus,stage:profile.role,ask:""},{premise:pitch.slice(0,300)||"",idea:"",tell:"",clarify:"",help:""})}catch(e){alert("Export failed: "+e.message)}finally{setExporting(null)}}},
+                {id:"pdf",icon:"📄",label:"PDF Report",desc:"Opens print-to-PDF in new tab",
+                  action:()=>openPDF({company:"Pitch Review",name:profile.name,industry:profile.focus,stage:profile.role,ask:""},{premise:pitch.slice(0,300)||"",idea:"",tell:"",clarify:"",help:""})},
+                {id:"txt",icon:"🗒",label:"Text Summary (.txt)",desc:"Plain text evaluation",
+                  action:()=>{const b=new Blob([`PITCH REVIEW\nReviewer: ${profile.name} (${profile.role})\nFocus: ${profile.focus}\n\n${"═".repeat(40)}\n\nPITCH CONTENT:\n${pitch}\n\n${"═".repeat(40)}\n\nEVALUATION:\n${evaluation?`Grade: ${evaluation.grade}\nScore: ${evaluation.score}/100\nVerdict: ${evaluation.verdict}`:"Not evaluated"}\n\nANNOTATIONS:\n${comments.map(c=>`[${c.time}] ${c.text}`).join("\n")||"None"}`],{type:"text/plain"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="pitch_review.txt";a.click();}},
+              ].map(({id,icon,label,desc,action})=>(
+                <Card key={id} style={{display:"flex",alignItems:"center",gap:"11px",marginBottom:"9px"}}>
+                  <span style={{fontSize:"19px"}}>{icon}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:600,fontSize:"13px"}}>{label}</div>
+                    <div style={{fontSize:"11px",color:T.muted,marginTop:"1px"}}>{desc}</div>
+                  </div>
+                  <Btn sm v="secondary" onClick={action} disabled={exporting===id}>{exporting===id?<Spin size={11}/>:"↓"}</Btn>
+                </Card>
+              ))}
+              {/* Summary card */}
+              <Card style={{marginTop:"14px",background:T.citrusSoft,border:`1px solid ${T.citrus}33`}}>
+                <div style={{fontSize:"12px",fontWeight:600,marginBottom:"7px"}}>Review Summary</div>
+                <div style={{fontSize:"12px",color:T.muted,lineHeight:1.6}}>
+                  <div>Reviewer: <span style={{color:T.text,fontWeight:500}}>{profile.name}</span></div>
+                  <div>Role: <span style={{color:T.text,fontWeight:500}}>{profile.role}</span></div>
+                  <div>Focus: <span style={{color:T.text,fontWeight:500}}>{profile.focus}</span></div>
+                  {evaluation&&<div style={{marginTop:"6px"}}>Grade: <span style={{color:GC[evaluation.grade]||T.text,fontWeight:700,fontFamily:SERIF,fontSize:"14px"}}>{evaluation.grade}</span> ({evaluation.score}/100)</div>}
+                  <div style={{marginTop:"4px"}}>{comments.length} annotation{comments.length!==1?"s":""}</div>
+                </div>
               </Card>
-            ))}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </div>
+    </div>
+  );
+}
+
+// ── ReviewMsgBubble — chat bubbles for the reviewer chat ─────────────────────
+function ReviewMsgBubble({msg,GCOL,GC}){
+  const isUser=msg.role==="user";
+ 
+  if(msg.type==="welcome"){
+    return(
+      <div className="fu" style={{padding:"14px 16px",background:T.citrusSoft,border:`1.5px solid ${T.citrus}55`,borderRadius:"13px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"7px",marginBottom:"7px"}}>
+          <span style={{fontSize:"17px"}}>🍋</span>
+          <span style={{fontFamily:SERIF,fontWeight:700,fontSize:"13px",color:T.citrus}}>Lemonade Review Coach</span>
+        </div>
+        <div style={{fontSize:"14px",lineHeight:1.65}} dangerouslySetInnerHTML={{__html:md(msg.text)}}/>
+      </div>
+    );
+  }
+ 
+  if(msg.type==="eval_result"){
+    const ev=msg.evaluation;
+    const gc=GC||{};
+    return(
+      <div className="fu" style={{padding:"13px 15px",background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:"12px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"11px",marginBottom:"10px"}}>
+          <div style={{fontFamily:SERIF,fontSize:"38px",fontWeight:800,color:gc[ev.grade]||T.text,lineHeight:1}}>{ev.grade}</div>
+          <div>
+            <div style={{fontSize:"11px",color:T.muted,fontFamily:MONO,textTransform:"uppercase",letterSpacing:".07em"}}>Pitch Score</div>
+            <div style={{fontWeight:700,fontSize:"16px",color:GCOL(ev.score)}}>{ev.score}<span style={{fontSize:"12px",fontWeight:400,color:T.muted}}>/100</span></div>
+          </div>
+        </div>
+        <div style={{fontSize:"13px",color:T.text,lineHeight:1.55,padding:"9px 11px",background:T.card,borderRadius:"7px",border:`1px solid ${T.border}`,marginBottom:"9px"}}>
+          "{ev.verdict}"
+        </div>
+        <div style={{fontSize:"12px",color:T.muted,lineHeight:1.4}}>
+          💬 Ask me anything about this score — "What's the weakest section?", "Would you fund this?", or "What would make it a B+?"
+        </div>
+      </div>
+    );
+  }
+ 
+  return(
+    <div className="fu" style={{
+      padding:"9px 13px",borderRadius:"11px",maxWidth:"84%",
+      alignSelf:isUser?"flex-end":"flex-start",
+      background:isUser?T.citrus:T.card,
+      border:isUser?"none":`1.5px solid ${T.border}`,
+      fontSize:"14px",lineHeight:1.65,color:isUser?"#fff":T.text,
+    }}>
+      {isUser
+        ?<span>{msg.text}</span>
+        :<span dangerouslySetInnerHTML={{__html:md(msg.text)}}/>
+      }
     </div>
   );
 }
