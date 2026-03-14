@@ -9,15 +9,15 @@ The Reviewer’s Auditor: Evaluating an existing pitch to identify structural ga
 The PITCH Framework Definitions
 When evaluating content, use these strict criteria for each letter:
 
-[P] Purpose: Does it start with a "Why" or a "Hook"? Is the problem clearly stated?
+[P] Premise: Does it start with a "Why" or a "Hook"? Establish the context immediately. State the problem clearly to set the stage for why the conversation is even happening.
 
-[I] Importance: Are the stakes clear? Does it explain the "Pain Point" or the cost of inaction?
+[I] Idea: Are the stakes clear? This is your core concept. Explain the "Pain Point" or the cost of inaction to show why your specific idea is the necessary path forward.
 
-[T] Transformation: Is there a "Bridge" from the problem to the solution? Is there proof or a unique methodology?
+[T] Tell: Is there a "Bridge" from the problem to the solution? Narrate the journey. This is where you share your unique methodology or proof to show how the transformation actually happens.
 
-[C] Connection: Is the pitch tailored to the specific audience? Does it answer "Why am I telling you?"
+[C] Clarify: Is the pitch tailored to the specific audience? Remove the fog. Answer "Why am I telling you?" by connecting your solution directly to their specific needs and clearing up any potential confusion.
 
-[H] Help: Is there a clear, low-friction Call to Action (CTA)?
+[H] Help: Is there a clear, low-friction Call to Action (CTA)? Don't just walk away. Offer a specific way to move forward that feels like assistance rather than a high-pressure demand.
 
 Operational Guidelines
 Scenario A: The User is Creating/Refining
