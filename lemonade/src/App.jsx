@@ -513,7 +513,7 @@ const md=(text)=>text
   .replace(/\n/g,"<br/>");
  
 // ══════════════════════════════════════════════════════════════════════════════
-//  CREATOR STUDIO — conversational hub
+//  CREATOR STUDIO
 // ══════════════════════════════════════════════════════════════════════════════
 function CreatorStudio({profile,sessionId,initData,onBack,onSave}){
   const[sections,setSections]=useState(initData?.sections||{});
@@ -602,7 +602,6 @@ function CreatorStudio({profile,sessionId,initData,onBack,onSave}){
  
   return(
     <div style={{height:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
-      {/* Header */}
       <div style={{background:T.surface,borderBottom:`1.5px solid ${T.border}`,padding:"8px 16px",display:"flex",alignItems:"center",gap:"11px",flexShrink:0,flexWrap:"wrap"}}>
         <span style={{fontSize:"16px"}}>🍋</span>
         <span style={{fontFamily:SERIF,fontWeight:700,fontSize:"14px"}}>lemonade</span>
@@ -617,10 +616,7 @@ function CreatorStudio({profile,sessionId,initData,onBack,onSave}){
           ))}
         </div>
       </div>
- 
-      {/* Body: chat + right panel */}
       <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 370px",overflow:"hidden"}}>
-        {/* ── Chat ── */}
         <div style={{display:"flex",flexDirection:"column",borderRight:`1.5px solid ${T.border}`,overflow:"hidden"}}>
           <div ref={chatRef} style={{flex:1,overflowY:"auto",padding:"18px 18px 6px",display:"flex",flexDirection:"column",gap:"10px"}}>
             {msgs.map(msg=><MsgBubble key={msg.id} msg={msg} onAccept={acceptDraft} profile={profile} GCOL={GCOL} onSectionEdit={(k,v)=>setSections(s=>({...s,[k]:v}))}/>)}
@@ -630,8 +626,6 @@ function CreatorStudio({profile,sessionId,initData,onBack,onSave}){
               </div>
             )}
           </div>
- 
-          {/* Quick actions — shown early in convo */}
           {msgs.length<=2&&(
             <div style={{padding:"4px 16px 8px",display:"flex",flexWrap:"wrap",gap:"5px"}}>
               {quickActions.map(a=>(
@@ -642,8 +636,6 @@ function CreatorStudio({profile,sessionId,initData,onBack,onSave}){
               ))}
             </div>
           )}
- 
-          {/* Input */}
           <div style={{padding:"8px 14px 12px",borderTop:`1.5px solid ${T.border}`,display:"flex",gap:"9px",alignItems:"flex-end"}}>
             <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)}
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
@@ -654,11 +646,7 @@ function CreatorStudio({profile,sessionId,initData,onBack,onSave}){
             </Btn>
           </div>
         </div>
- 
-        {/* ── Right panel ── */}
         <div style={{overflow:"auto",background:T.surface}}>
- 
-          {/* SECTIONS */}
           {panel==="sections"&&(
             <div style={{padding:"14px"}}>
               <div style={{fontSize:"11px",fontFamily:MONO,color:T.muted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:"10px"}}>PITCH Framework</div>
@@ -694,8 +682,6 @@ function CreatorStudio({profile,sessionId,initData,onBack,onSave}){
               </div>
             </div>
           )}
- 
-          {/* ANALYSIS */}
           {panel==="analysis"&&(
             <div style={{padding:"14px"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
@@ -745,11 +731,7 @@ function CreatorStudio({profile,sessionId,initData,onBack,onSave}){
               )}
             </div>
           )}
- 
-          {/* PRACTICE */}
           {panel==="practice"&&<PracticePanel sections={sections}/>}
- 
-          {/* EXPORT */}
           {panel==="export"&&(
             <div style={{padding:"14px"}}>
               <div style={{fontSize:"11px",fontFamily:MONO,color:T.muted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:"12px"}}>Export Pitch</div>
@@ -879,7 +861,6 @@ function MsgBubble({msg,onAccept,profile,GCOL,onSectionEdit}){
     );
   }
  
-  // Regular message
   return(
     <div className="fu" style={{
       padding:"9px 13px",borderRadius:"11px",maxWidth:"84%",
@@ -1016,13 +997,12 @@ function ReviewerStudio({profile,sessionId,initData,onBack,onSave}){
           <button key={id} onClick={()=>setTab(id)} style={{padding:"8px 16px",fontSize:"13px",fontFamily:FONT,fontWeight:600,background:"none",border:"none",cursor:"pointer",whiteSpace:"nowrap",color:tab===id?T.citrus:T.muted,borderBottom:tab===id?`2.5px solid ${T.citrus}`:"2.5px solid transparent"}}>{lbl}</button>
         ))}
       </div>
- 
       <div style={{flex:1,overflow:"auto",padding:"22px"}}>
         {tab==="review"&&(
           <div style={{maxWidth:"980px",margin:"0 auto",display:"grid",gridTemplateColumns:"1fr 350px",gap:"20px"}}>
             <div>
               <div style={{marginBottom:"10px"}}><DropZone onText={t=>{setPitch(t)}} label="Upload pitch deck to review" sm/></div>
-              <textarea value={pitch} onChange={e=>setPitch(e.target.value)} placeholder="Or paste pitch content here — executive summary, transcript, slide notes…" rows={15}
+              <textarea value={pitch} onChange={e=>setPitch(e.target.value)} placeholder="Or paste pitch content here…" rows={15}
                 style={{width:"100%",background:T.card,border:`1.5px solid ${T.border}`,borderRadius:"9px",color:T.text,fontSize:"14px",padding:"12px 13px",resize:"vertical",outline:"none",lineHeight:1.65}}/>
               <div style={{display:"flex",gap:"9px",marginTop:"9px",flexWrap:"wrap"}}>
                 <Btn v="citrus" onClick={evaluate} disabled={loading||!pitch.trim()}>
@@ -1075,7 +1055,6 @@ function ReviewerStudio({profile,sessionId,initData,onBack,onSave}){
             </div>
           </div>
         )}
- 
         {tab==="rubric"&&(
           <div style={{maxWidth:"540px",margin:"0 auto"}}>
             <h2 style={{fontFamily:SERIF,fontSize:"20px",fontWeight:700,marginBottom:"4px"}}>Customize Rubric</h2>
@@ -1095,7 +1074,6 @@ function ReviewerStudio({profile,sessionId,initData,onBack,onSave}){
             </div>
           </div>
         )}
- 
         {tab==="discuss"&&(
           <div style={{maxWidth:"620px",margin:"0 auto",display:"flex",flexDirection:"column",height:"calc(100vh - 190px)"}}>
             <div style={{marginBottom:"11px"}}>
@@ -1122,7 +1100,6 @@ function ReviewerStudio({profile,sessionId,initData,onBack,onSave}){
             </div>
           </div>
         )}
- 
         {tab==="compare"&&(
           <div style={{maxWidth:"920px",margin:"0 auto"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px",flexWrap:"wrap",gap:"9px"}}>
@@ -1154,7 +1131,6 @@ function ReviewerStudio({profile,sessionId,initData,onBack,onSave}){
             </div>
           </div>
         )}
- 
         {tab==="export"&&(
           <div style={{maxWidth:"520px",margin:"0 auto"}}>
             <h2 style={{fontFamily:SERIF,fontSize:"20px",fontWeight:700,marginBottom:"4px"}}>Export Review</h2>
