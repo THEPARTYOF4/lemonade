@@ -63,14 +63,39 @@ export async function ai_draftSection(key, profile) {
 /**
  * 3. ANALYSIS: The "Auditor" role
  */
-export async function ai_fullAnalysis(sections, profile) {
-  const model = getCoachModel(`Analyze this pitch for ${profile.company}. 
-  Return your response strictly as a JSON object with this structure: 
-  { "score": number, "breakdown": { "premise": { "score": number, "comment": string }, ... }, "strengths": [string], "improvements": [string] }`);
+export async function ai_fullAnalysis(sections, profile, history = []) {
+  const analysisSystemPrompt = `
+    You are an Expert Pitch Auditor. 
+    Analyze the current pitch for ${profile.company}. 
+    
+    IMPORTANT: Look at both the structured "Pitch Sections" provided below AND the conversation history. 
+    If the sections are empty, evaluate the pitch content shared by the user in the chat history.
+
+    STRICT JSON ONLY:
+    { 
+      "score": number, 
+      "heartScore": number,
+      "breakdown": { "premise": {...}, "idea": {...}, "tell": {...}, "clarify": {...}, "help": {...} },
+      "strengths": [], 
+      "improvements": [] 
+    }
+  `;
+
+  const model = getCoachModel(analysisSystemPrompt);
 
   const prompt = `Pitch Sections: ${JSON.stringify(sections)}`;
-  const result = await model.generateContent(prompt);
-  const text = result.response.text();
+  const chat = model.startChat({
+    history: history, // This is the crucial part!
+    generationConfig: {
+      maxOutputTokens: 1000,
+    },
+  });
+  const triggerPrompt = `Pitch Sections Data: ${JSON.stringify(sections)}. 
+  Please perform the full audit now based on the most recent pitch details discussed.`;
+
+  const result = await chat.sendMessage(triggerPrompt);
+  const response = await result.response;
+  const text = response.text();
   
   // Strip markdown code blocks if the AI includes them
   const cleanedJson = text.replace(/```json|```/g, "");
