@@ -1,6 +1,6 @@
 # BIRTHDAY PARTY: Lemonade 🍋
 
-### 🏆 **[REDACTED]ND Place Winner - HackIsland 9.0 Lenovo Spring 2026**
+### 🏆 **2ND Place Winner - HackIsland 9.0 Lenovo Spring 2026**
 
 **Lemonade** is an AI-driven web application that empowers creators to build high-impact pitch decks and assists reviewers in evaluating them through an objective, data-backed framework.
 
